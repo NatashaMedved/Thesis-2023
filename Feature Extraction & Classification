@@ -1,0 +1,1316 @@
+### Load R packages
+```{r, message = FALSE}
+library(tidyverse)   # Access a collection of packages for data management 
+library(reticulate)  # Interface Python and R Studio
+library(magick)      # Load and adjust .PNG files
+library(gridExtra)   # Arrange multiple plots
+library(lme4)
+```
+
+### Load Python libraries
+```{python, message = FALSE}
+# Import some useful standard library modules
+import os
+from pathlib import Path
+
+# Import some general scientific python libraries
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# Import the parameterization model object
+from fooof import FOOOF
+
+# Import functions to visualize flattened power spectrum
+from fooof.plts.spectra import plot_spectrum
+from fooof.sim.gen import gen_aperiodic
+
+# Import functions to examine frequency-by-frequency error of model fits
+from fooof.analysis.error import compute_pointwise_error_fm
+```
+
+### Check specparam version
+```{python, message = FALSE}
+import fooof
+print(fooof.__version__)
+```
+
+### Load individual PSD
+Load CSV files, including:
+- `freqs.csv`, which contains a vector of frequencies
+- `eopPSDs.csv`, which contains the power values for an individual power spectrum
+
+Subject 1
+```{python, message = FALSE}
+# Load csv files containing frequency and power values
+freqs = np.ravel(pd.read_csv("/Users/natashamedved/MATLAB_Exported_Data/UniqueFrequencies.csv"))
+
+# Read in PSD dataset 
+spectrum = np.ravel(pd.read_csv("/Users/natashamedved/MATLAB_Exported_Data/high_session_1_Central_wide.csv"))
+
+# Select the row for subject 1
+spectrum2 = spectrum_1[spectrum_1['Subject'] == 1]
+# Drop the 'Subject column to only get the frequencies
+spectrum3 = subject2.drop('Subject', axis=1)
+# Convert to an array
+spectrum = np.ravel(spectrum2)[1:250]
+```
+
+All 29 subjects
+```{python, message = FALSE}
+import pandas as pd
+import numpy as np
+
+# Load the dataset
+df = pd.read_csv("/Users/natashamedved/MATLAB_Exported_Data/high_session_1_Central_wide.csv")
+
+# Initialize a dictionary to hold the spectra for each subject
+spectra_dict = {}
+
+# Loop through each subject number
+for subject in range(1, 30):  # Assuming there are 29 subjects
+    # Select the row for the current subject
+    subject_row = df[df['Subject'] == subject]
+    
+    # Drop the 'Subject' column to only keep the frequency values
+    subject_spectra = subject_row.drop('Subject', axis=1)
+    
+    # Convert to a NumPy array and flatten it
+    spectra_array = np.ravel(subject_spectra)
+    
+    # Add the array to the dictionary
+    spectra_dict[subject] = spectra_array
+
+# At this point, spectra_dict will have 29 entries, one for each subject
+
+
+```
+
+All 29 subjects for all 27 datasets 
+
+```{python, message = FALSE}
+# Check shape of loaded data
+print(freqs.shape)
+print(spectrum.shape)
+```
+
+### Parameterize a power spectrum
+Now we can parameterize our power spectrum!
+
+All 29 subjects in all 27 _wide.csv datasets
+```{python}
+import pandas as pd
+from fooof import FOOOF
+
+# Define your conditions, sessions, and regions
+conditions = ['low', 'medium', 'high']
+sessions = ['session_1', 'session_2', 'session_3']
+regions = ['Frontal', 'Central', 'Parieto']
+
+# Define the base directory where your CSV files are stored
+base_dir = "/Users/natashamedved/MATLAB_Exported_Data/"
+
+# Define your frequency range for the fit
+PSD_range = [0, 250]
+
+# Initialize FOOOF settings
+peak_width = [1, 8]
+n_peaks = 6
+peak_height = 0.1
+
+# Iterate over each condition, session, and region
+for condition in conditions:
+    for session in sessions:
+        for region in regions:
+            file_name = f"{condition}_{session}_{region}_wide.csv"
+            file_path = base_dir + file_name
+            
+            # Load the dataset
+            spectrum_df = pd.read_csv(file_path)
+
+            # Store the model results for each dataset
+            fooof_results_dataset = []
+
+            # Iterate over each subject
+            for i in range(1, 30): # Assuming subject numbers start from 1 to 29
+                # Select the row for the current subject
+                spectrum = spectrum_df[spectrum_df['Subject'] == i].drop('Subject', axis=1).squeeze().values
+                
+                # Initialize a FOOOF model object for spectral parameterization with your settings
+                fm = FOOOF(peak_width_limits=peak_width, max_n_peaks=n_peaks, min_peak_height=peak_height, verbose=False)
+                
+                # Fit the PSD data for the current subject
+                fm.fit(freqs, spectrum, PSD_range)
+                
+                # Store the fitted model results
+                fooof_results_dataset.append(fm.get_results())
+                
+                # Optionally, create a report for each fit
+                fig = fm.plot()
+                plt.title(f'{condition.capitalize()} {session.replace("_", " ").capitalize()} {region} - Subject {i}')
+                plt.show()
+                
+                # Clear the figure to prepare for the next plot
+                plt.clf()
+
+            # Optionally, do something with the results for each dataset
+            # For example, save them to a file, print a summary, etc.
+
+```
+
+Plot aperiodic component over the full frequency range
+```{python}
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Assuming `results_df` is your DataFrame with FOOOF results
+# Let's say you're interested in subject 1
+subject_id = 1
+
+# Select data for the subject across all sessions
+subject_data = results_df[results_df['Subject'] == subject_id]
+
+# Define the frequency range for plotting
+frequencies = np.linspace(1, 40, 400)  # for example, from 1 to 40 Hz
+
+# Plotting
+plt.figure(figsize=(10, 6))
+
+for session in [1, 2, 3]:  # Loop through sessions
+    session_data = subject_data[subject_data['Session'] == session]
+    
+    # There should only be one row per session for each subject
+    for _, row in session_data.iterrows():
+        offset = row['Offset']
+        exponent = row['Exponent']
+        
+        # Generate the aperiodic fit
+        aperiodic_fit = offset + exponent * np.log10(frequencies)
+        
+        # Plot
+        plt.plot(frequencies, aperiodic_fit, label=f'Session {session}')
+
+plt.title(f'Aperiodic Components for Subject {subject_id} Across Sessions')
+plt.xlabel('Frequency (Hz)')
+plt.ylabel('Power (log10(μV^2/Hz))')
+plt.legend()
+plt.show()
+
+
+
+```
+
+Extract component parameters
+```{python}
+import pandas as pd
+from fooof import FOOOF
+
+# Define your conditions, sessions, and regions
+conditions = ['low', 'medium', 'high']
+sessions = ['session_1', 'session_2', 'session_3']
+regions = ['Frontal', 'Central', 'Parieto']
+
+# Define the base directory where your CSV files are stored
+base_dir = "/Users/natashamedved/MATLAB_Exported_Data/"
+
+# Define your frequency range for the fit
+PSD_range = [0, 250]
+
+# Initialize FOOOF settings
+peak_width = [1, 8]
+n_peaks = 6
+peak_height = 0.1
+
+# Create a list to store all the results
+all_results = []
+
+### Begin new test script 
+
+import pandas as pd
+from fooof import FOOOF
+
+# Create a list to store all the results
+all_results = []
+
+# Iterate over each condition, session, and region
+for condition in conditions:
+    for session in sessions:
+        for region in regions:
+            file_name = f"{condition}_{session}_{region}_wide.csv"
+            file_path = base_dir + file_name
+            
+            # Load the dataset
+            spectrum_df = pd.read_csv(file_path)
+
+            # Iterate over each subject
+            for i in range(1, 30):  # Assuming subjects are numbered 1 to 29
+                # Extract the spectrum for the current subject
+                spectrum = spectrum_df[spectrum_df['Subject'] == i].drop('Subject', axis=1).values.flatten()
+
+                # Initialize and fit the FOOOF model
+                fm = FOOOF(peak_width_limits=peak_width, max_n_peaks=n_peaks, min_peak_height=peak_height, verbose=False)
+                fm.fit(freqs, spectrum, PSD_range)
+
+                # Extract aperiodic parameters (offset and exponent)
+                ap_params = fm.get_params('aperiodic_params')
+                offset = ap_params[0]
+                exponent = ap_params[1]
+
+                # Extract center frequencies
+                cfs = fm.get_params('peak_params', 'CF')
+
+                # Store results in the list
+                all_results.append({
+                    'Condition': condition,
+                    'Session': session,
+                    'Region': region,
+                    'Subject': i,
+                    'Offset': offset,
+                    'Exponent': exponent,
+                    'Center Frequencies': cfs,
+                    'Error': fm.error_,
+                    'R^2': fm.r_squared_,
+                    'Number of Peaks': fm.n_peaks_
+                })
+
+
+# Convert the list to a DataFrame
+results_df = pd.DataFrame(all_results)
+
+# Save the DataFrame as a CSV file
+output_file = "/Users/natashamedved/MATLAB_Exported_Data/FOOOF_results.csv"
+results_df.to_csv(output_file, index=False)
+
+print(f"Results saved to {output_file}")
+
+# Load the dataset
+file_path = "/Users/natashamedved/MATLAB_Exported_Data/FOOOF_results.csv"
+df = pd.read_csv(file_path)
+
+# Recode the 'Condition' column
+condition_mapping = {'low': 1, 'medium': 2, 'high': 3}
+df['Condition'] = df['Condition'].map(condition_mapping)
+
+# Save the modified DataFrame back to CSV
+output_file = "/Users/natashamedved/MATLAB_Exported_Data/FOOOF_results_recoded.csv"
+df.to_csv(output_file, index=False)
+
+print(f"Re-coded results saved to {output_file}")
+
+import pandas as pd
+
+# Load the dataset
+file_path = '/Users/natashamedved/MATLAB_Exported_Data/FOOOF_results_recoded.csv'  # Update this to your actual file path
+data = pd.read_csv(file_path)
+
+# Recoding 'Session' column
+data['Session'] = data['Session'].replace({'session_1': 1, 'session_2': 2, 'session_3': 3})
+
+# Save the modified dataframe to a new CSV file
+output_file_path = '/Users/natashamedved/MATLAB_Exported_Data/FOOOF_results_recoded.csv'  # Update this to your desired output file path
+data.to_csv(output_file_path, index=False)
+
+print("File has been successfully modified and saved.")
+
+
+                
+```
+
+
+
+### Investigating Aperiodic Component Parameters 
+ANOVA
+```{r}
+library(report)
+off <- aov(Offset ~ Session * Condition, data = data)
+report(off)
+summary(off)
+
+exp <- aov(Exponent ~ Session * Condition, data = data)
+report(exp)
+summary(exp)
+```
+
+
+Linear Mixed-Effects Model - Between sessions
+```{r}
+library(lme4)
+library(Matrix)
+remove.packages("Matrix")
+install.packages("lme4")
+
+as.factor(data$Condition)
+as.factor(data$Session)
+
+lm_off <- lmer(Offset ~ Session * Condition + (1 | Subject), data = data)
+print(summary(lm_off))
+report(lm_off)
+
+lm_exp <- lmer(Exponent ~ Session * Condition + (1 | Subject), data = data)
+print(summary(lm_exp))
+report(lm_exp)
+
+```
+
+Linear Mixed-Effects Model - Subject Error 
+```{r}
+library(lme4)
+library(Matrix)
+remove.packages("Matrix")
+install.packages("lme4")
+
+lm_off <- lmer(Offset ~ 1 + (1 | Subject), data = data)
+print(summary(lm_off))
+report(lm_off)
+
+lm_exp <- lmer(Exponent ~ 1 + (1 | Subject), data = data)
+print(summary(lm_exp))
+report(lm_exp)
+
+m <- anova(lm_off, lm_exp)
+report(m)
+
+RStudio.Version()
+```
+
+Boxplots
+```{r}
+# Load necessary libraries
+library(tidyverse)
+library(readr)
+library(lubridate)
+library(ggplot2)
+library(psych)
+
+
+# Load the data
+data <- read_csv("/Users/natashamedved/MATLAB_Exported_Data/FOOOF_results_recoded.csv")
+
+#### Box plots ####
+# Exponent 
+g_exp <- ggplot(data, aes(x = factor(Subject), y = Exponent, fill = factor(Session))) +
+  geom_boxplot() +
+  theme_bw() +
+  labs(title = "Variability of Aperiodic Component Parameter: Exponent Across Subjects and Sessions",
+       x = "Subject",
+       y = "Exponent",
+       fill = "Session") +
+  scale_fill_brewer(palette = "Set1") +  # Optional: use a color palette for clarity
+  theme(plot.title = element_text(size = 12),
+        legend.title = element_text(size = 10),
+        legend.text = element_text(size = 8))  # Optional: adjust legend text size
+
+# Save plot with increased width
+#ggsave("plot.png", plot = g, width = 20, height = 8, dpi = 300)
+
+# Offset 
+g_off <- ggplot(data, aes(x = factor(Subject), y = Offset, fill = factor(Session))) +
+  geom_boxplot() +
+  theme_bw() +
+  labs(title = "Variability of Aperiodic Component Parameter: Offset Across Subjects and Sessions",
+       x = "Subject",
+       y = "Offset",
+       fill = "Session") +
+  scale_fill_brewer(palette = "Set1") +  # Optional: use a color palette for clarity
+  theme(plot.title = element_text(size = 12),
+        legend.title = element_text(size = 10),
+        legend.text = element_text(size = 8))  # Optional: adjust legend text size
+
+# Save plot with increased width
+ggsave("plot_g_off.png", plot = g_off, width = 20, height = 8, dpi = 300)
+
+```
+Exponent vs Offset 
+
+```{r}
+library(ggplot2)
+# Install gridExtra if you haven't already
+# install.packages("gridExtra")
+
+# Load gridExtra
+library(gridExtra)
+
+# Subset for Offset for Subject 1 and 2
+offset_data <- data[data$Subject %in% c(6, 18), c("Subject", "Offset")]
+
+# Subset for Exponent for Subject 1 and 2
+exponent_data <- data[data$Subject %in% c(6, 18), c("Subject", "Exponent")]
+
+# Create the boxplot for Offset without a legend
+offset_plot <- ggplot(offset_data, aes(x = as.factor(Subject), y = Offset, fill = as.factor(Subject))) +
+  geom_boxplot(alpha = 0.5, fill = "grey", color = "black") +
+  geom_jitter(width = 0.2, size = 2, color = "black", alpha = 0.5) +
+  labs(
+       x = "Subjects",
+       y = "Offset") +
+  theme_minimal() +
+  theme(legend.position = "none")  # Remove the legend
+
+# Create the boxplot for Exponent with a legend
+exponent_plot <- ggplot(exponent_data, aes(x = as.factor(Subject), y = Exponent, fill = as.factor(Subject))) +
+  geom_boxplot(alpha = 0.5, fill = "grey", color = "black") +
+  geom_jitter(width = 0.2, size = 2, color = "black", alpha = 0.5) +
+  labs(
+       x = "Subjects",
+       y = "Exponent") +
+  theme_minimal() +
+  theme(legend.position = "none")  # Remove the legend
+
+
+
+# Arrange the two plots side by side
+grid.arrange(offset_plot, exponent_plot, ncol = 2)
+
+
+
+# Assuming your dataset is named 'data' and has columns 'Subject', 'Offset', and 'Exponent'
+
+# Calculate and merge variance data
+offset_variance <- aggregate(Offset ~ Subject, data = data, var)
+exponent_variance <- aggregate(Exponent ~ Subject, data = data, var)
+variance_data <- merge(offset_variance, exponent_variance, by = "Subject")
+names(variance_data) <- c("Subject", "Variance_Offset", "Variance_Exponent")
+
+# Find subjects with high variance in Offset and low in Exponent
+sorted_subjects <- variance_data[order(-variance_data$Variance_Offset, variance_data$Variance_Exponent),]
+selected_subjects <- head(sorted_subjects, 2)
+
+# Print the results
+print(selected_subjects)
+
+
+
+
+
+```
+
+
+Covariate Shift
+```{r}
+training_set
+test_set
+
+plot(training_set$Offset, training_set$Exponent)
+plot(test_set$Offset, test_set$Exponent)
+
+
+# Combining both sets for plotting
+combined_set <- rbind(training_set, test_set)
+
+# Scatter plot for 'Exponent'
+ggplot(combined_set, aes(x = Exponent)) +
+  geom_scatter(alpha = 0.5) +
+  labs(title = "Density Plot for Exponent", x = "Exponent", y = "Density")
+
+
+ggplot(combined_set, aes(x = Exponent, y = Offset)) +
+  geom_point(alpha = 0.5) +
+  labs(title = "Scatter Plot for Exponent vs Number of Peaks",
+       x = "Exponent",
+       y = "Number of Peaks") +
+  theme_minimal()
+
+
+
+```
+
+### Cross-day classification of aperiodic features
+Support Vector Machine (SVM) 
+````{r}
+# install.packages('caTools') 
+# library(caTools)
+
+FOOOF_data <- read.csv("/Users/natashamedved/MATLAB_Exported_Data/FOOOF_results_recoded.csv")
+model_data <- FOOOF_data[, c("Subject",
+                             "Condition",
+                             "Session",
+                             "Exponent",
+                             "Offset",
+                             "Center.Frequencies", 
+                             "Number.of.Peaks")]
+
+# Function to process the frequencies
+process_frequencies <- function(freq_string, max_length = 6) {
+  # Remove the brackets and split the string by space
+  freqs <- gsub("\\[|\\]", "", freq_string)
+  freqs <- strsplit(freqs, " ")[[1]]
+  
+  # Convert to numeric
+  freqs <- as.numeric(freqs)
+
+  # Pad with zeros if there are less than max_length elements
+  length(freqs) <- max_length
+  freqs[is.na(freqs)] <- 0
+
+  return(freqs)
+}
+
+# Apply the function to the Center.Frequencies column
+split_freqs <- lapply(model_data$Center.Frequencies, process_frequencies)
+
+# Convert the list to a data frame
+freqs_df <- do.call(rbind, split_freqs)
+
+# Assign column names
+colnames(freqs_df) <- paste0("Center.Freq", 1:6)
+
+# Add the new columns to the FOOOF_data dataframe
+model_data <- cbind(model_data, freqs_df)
+
+# Check the first few rows to confirm
+head(model_data)
+
+# Encoding the target feature as factor 
+model_data$Condition = factor(model_data$Condition, levels = c(1, 2, 3)) 
+```
+
+Model 1 (Train on 1st & 2nd sessions / Test on 3rd session)
+```{r}
+# Training / Test split
+set.seed(123)
+# Assume 'model_data' is your main dataset and 'Session' is the session identifier column
+# Identify unique sessions
+unique_sessions <- unique(model_data$Session)
+
+# Assuming you know which sessions to use for training and testing
+# For example, using the first two sessions for training and the third for testing
+training_sessions <- unique_sessions[1:2]
+testing_session <- unique_sessions[3]
+
+# Create training and test sets
+training_set <- subset(model_data, Session %in% training_sessions)
+test_set <- subset(model_data, Session %in% testing_session)
+```
+
+Model 2 (Train on 1st sessions / Test on 2nd session)
+```{r}
+# Training / Test split
+set.seed(123)
+# Assume 'model_data' is your main dataset and 'Session' is the session identifier column
+# Identify unique sessions
+unique_sessions <- unique(model_data$Session)
+
+# Assuming you know which sessions to use for training and testing
+# For example, using the first two sessions for training and the third for testing
+training_sessions <- unique_sessions[1]
+testing_session <- unique_sessions[2]
+
+# Create training and test sets
+training_set <- subset(model_data, Session %in% training_sessions)
+test_set <- subset(model_data, Session %in% testing_session)
+```
+
+Model 3 (One Subject)
+```{r}
+# Set the subject you're interested in
+interested_subject <- 1  # Replace "Subject1" with the actual subject identifier you're interested in
+
+# Filter the data for the interested subject
+subject_data <- subset(model_data, Subject == interested_subject)
+
+# Identify unique sessions within the filtered data
+unique_sessions <- unique(subject_data$Session)
+
+# Split the data for the interested subject into training and test sets
+# Assuming the first two sessions are for training and the third for testing
+training_sessions <- unique_sessions[1:2]
+testing_session <- unique_sessions[3]
+
+# Create training and test sets for the interested subject
+training_set <- subset(subject_data, Session %in% training_sessions)
+test_set <- subset(subject_data, Session %in% testing_session)
+```
+
+Model 4 (Train and test all subjects individually)
+```{r}
+# Assume 'model_data' is your dataset and it contains columns 'Subject' and 'Session'
+
+# Get a list of all unique subjects
+unique_subjects <- unique(model_data$Subject)
+
+# Initialize lists to store training and test sets for each subject
+training_sets <- list()
+test_sets <- list()
+
+# Assuming you want to name them as "1", "2", "3", ..., "29"
+#names(training_sets) <- as.character(1:29)
+# Assuming you want to name them as "1", "2", "3", ..., "29"
+#names(test_sets) <- as.character(1:29)
+
+
+# Loop through each subject
+for (subject in unique_subjects) {
+  # Filter the data for the current subject
+  subject_data <- subset(model_data, Subject == subject)
+  
+  # Identify unique sessions for the current subject
+  unique_sessions <- unique(subject_data$Session)
+  
+  # Assuming the first two sessions are for training and the third for testing
+  # (Adjust the logic here if the session numbers are not in order or need specific handling)
+  training_sessions <- unique_sessions[1:2]
+  testing_session <- unique_sessions[3]
+  
+  # Create training and test sets for the current subject
+  training_set <- subset(subject_data, Session %in% training_sessions)
+  test_set <- subset(subject_data, Session == testing_session)
+  
+  # Store the training and test sets in the lists
+  training_sets[[subject]] <- training_set
+  test_sets[[subject]] <- test_set
+}
+
+# At this point, 'training_sets' and 'test_sets' will contain the training and test data
+# for each subject, which you can access using 'training_sets[[subject_identifier]]' and
+# 'test_sets[[subject_identifier]]', respectively.
+
+```
+
+Model 4 (Train and test all subjects individually) 2.0
+```{r}
+# Model 4 (Train and test all subjects individually)
+
+# Assume 'model_data' is your dataset and it contains columns 'Subject' and 'Session'
+
+# Get a list of all unique subjects
+unique_subjects <- unique(model_data$Subject)
+
+# Initialize lists to store training and test sets for each subject
+training_sets <- list()
+test_sets <- list()
+
+# Loop through each subject
+for (subject in unique_subjects) {
+  # Filter the data for the current subject
+  subject_data <- subset(model_data, Subject == subject)
+  
+  # Identify unique sessions for the current subject
+  unique_sessions <- unique(subject_data$Session)
+  
+  # Assuming the first two sessions are for training and the third for testing
+  training_sessions <- unique_sessions[1:2]
+  testing_session <- unique_sessions[3]
+  
+  # Create training and test sets for the current subject
+  training_set <- subset(subject_data, Session %in% training_sessions)
+  test_set <- subset(subject_data, Session == testing_session)
+  
+  # Store the training and test sets in the lists with subject names
+  training_sets[[as.character(subject)]] <- training_set
+  test_sets[[as.character(subject)]] <- test_set
+}
+
+# At this point, 'training_sets' and 'test_sets' will contain the training and test data
+# for each subject. Each element in the list is named with the subject's identifier.
+
+
+```
+
+
+```{r}
+# Feature Scaling 
+# Apply scaling to the 'Offset' and 'Exponent' columns in the training set
+#training_set[, c("Exponent", "Center.Freq1", "Center.Freq2", "Center.Freq3", "Center.Freq4", #"Center.Freq5", "Center.Freq6", "Number.of.Peaks")] <- scale(training_set[, c("Exponent", #"Center.Freq1", "Center.Freq2", "Center.Freq3", "Center.Freq4", "Center.Freq5", "Center.Freq6", #"Number.of.Peaks")])
+#
+## Apply scaling to the 'Offset' and 'Exponent' columns in the test set
+#test_set[, c("Exponent", "Center.Freq1", "Center.Freq2", "Center.Freq3", "Center.Freq4", #"Center.Freq5", "Center.Freq6", "Number.of.Peaks")] <- scale(test_set[, c("Exponent", #"Center.Freq1", "Center.Freq2", "Center.Freq3", "Center.Freq4", "Center.Freq5", "Center.Freq6", #"Number.of.Peaks")])
+
+# Custom scaling function that excludes zero values
+scale_except_zero <- function(x) {
+  non_zero_indices <- x != 0
+  x[non_zero_indices] <- scale(x[non_zero_indices])
+  return(x)
+}
+
+# Apply custom scaling to the specified columns in the training set
+training_set[, c("Exponent", "Offset")] <- 
+  lapply(training_set[, c("Exponent", "Offset")], scale_except_zero)
+
+# Convert the list back to a data frame
+training_set <- as.data.frame(training_set)
+
+# Apply custom scaling to the specified columns in the test set
+test_set[, c("Exponent", "Offset")] <- 
+  lapply(test_set[, c("Exponent", "Offset")], scale_except_zero)
+
+# Convert the list back to a data frame
+test_set <- as.data.frame(test_set)
+
+
+```
+
+Fitting SVM to the Training set
+```{r}
+# Make sure 'Condition' is a factor if it's not numeric
+library(e1071)
+
+# Create a data frame with only the features
+features <- data.frame(Exponent = training_set$Exponent, Offset = training_set$Offset)
+
+# Ensure 'Condition' is a factor
+training_set$Condition <- as.factor(training_set$Condition)
+
+# Define ranges for C and gamma for tuning
+tune_result <- tune.svm(x = features, y = training_set$Condition,
+                        kernel = "radial",
+                        cost = 10^(-1:2),  # Range for cost (C)
+                        gamma = 10^(-2:1)) # Range for gamma
+
+# View the best parameters
+print(tune_result$best.parameters)
+
+
+# View the best parameters
+print(tune_result$best.parameters)
+
+```
+
+Debugging
+```{r}
+
+
+```
+
+
+Model 1: Aperiodic Offset 
+```{r}
+library(e1071)
+
+# Initialize lists to store results
+classifiers <- list()
+predictions <- list()
+confusion_matrices <- list()
+
+# Check if training_sets has names and is not empty
+if (length(training_sets) == 0 || is.null(names(training_sets))) {
+  stop("training_sets is empty or does not have named elements.")
+}
+
+# Loop over each subject
+for (subject_id in names(training_sets)) {
+  
+  # Check if the training set for the subject is not NULL or empty
+  if (is.null(training_sets[[subject_id]]) || nrow(training_sets[[subject_id]]) == 0) {
+    warning(paste("Training set for subject", subject_id, "is NULL or empty. Skipping."))
+    next
+  }
+  
+  # Train SVM classifier on the training set of the current subject
+  classifier <- svm(formula = Condition ~ Offset, data = training_sets[[subject_id]], type = 'C-classification', kernel = 'radial')
+  
+  # Store the trained model
+  classifiers[[subject_id]] <- classifier
+  
+  # Check if the test set for the subject is not NULL or empty
+  if (is.null(test_sets[[subject_id]]) || nrow(test_sets[[subject_id]]) == 0) {
+    warning(paste("Test set for subject", subject_id, "is NULL or empty. Skipping."))
+    next
+  }
+  
+  # Predict on the test set of the current subject
+  y_pred <- predict(classifier, newdata = test_sets[[subject_id]])
+  
+  # Check if predictions were made
+  if (length(y_pred) == 0) {
+    warning(paste("No predictions made for subject", subject_id, ". Skipping."))
+    next
+  }
+  
+  # Store the predictions
+  predictions[[subject_id]] <- y_pred
+  
+  # Generate and store the confusion matrix
+  cm <- table(test_sets[[subject_id]]$Condition, y_pred)
+  confusion_matrices[[subject_id]] <- cm
+  
+  # Optionally, print the confusion matrix for each subject
+  print(paste("Confusion Matrix for Subject", subject_id))
+  print(cm)
+}
+
+# Continue with the rest of the accuracy calculation and checks...
+
+# Initialize variables to store aggregated true positives and total predictions
+total_true_positives <- 0
+total_predictions <- 0
+
+# Loop through each confusion matrix to aggregate values
+for (subject_id in names(confusion_matrices)) {
+  cm <- confusion_matrices[[subject_id]]
+  
+  # Sum the diagonal elements for true positives
+  true_positives <- sum(diag(cm))
+  total_true_positives <- total_true_positives + true_positives
+  
+  # Sum all elements for total predictions
+  total <- sum(cm)
+  total_predictions <- total_predictions + total
+  
+  # Optionally, print out the true positives and total for each subject
+  print(paste("Subject", subject_id, "- True Positives:", true_positives, ", Total Predictions:", total))
+}
+
+# Calculate overall accuracy
+if (total_predictions > 0) {
+  overall_accuracy <- total_true_positives / total_predictions
+  print(paste("Overall Accuracy:", overall_accuracy))
+} else {
+  print("No predictions were made, so overall accuracy cannot be calculated.")
+}
+
+training_sets[[1]]
+
+```
+
+Model 2: Aperiodic Exponent  
+```{r}
+library(e1071)
+
+# Initialize lists to store results for Exponent
+exponent_classifiers <- list()
+exponent_predictions <- list()
+exponent_confusion_matrices <- list()
+
+# Loop over each subject for Exponent
+for (subject_id in names(training_sets)) {
+  
+  # Ensure the training set is valid
+  if (is.null(training_sets[[subject_id]]) || nrow(training_sets[[subject_id]]) == 0) {
+    warning(paste("Training set for subject", subject_id, "is NULL or empty. Skipping."))
+    next
+  }
+  
+  # Train SVM classifier using Exponent as a feature
+  exponent_classifier <- svm(formula = Condition ~ Exponent, data = training_sets[[subject_id]], type = 'C-classification', kernel = 'radial')
+  
+  # Store the trained model for Exponent
+  exponent_classifiers[[subject_id]] <- exponent_classifier
+  
+  # Ensure the test set is valid
+  if (is.null(test_sets[[subject_id]]) || nrow(test_sets[[subject_id]]) == 0) {
+    warning(paste("Test set for subject", subject_id, "is NULL or empty. Skipping."))
+    next
+  }
+  
+  # Predict using the Exponent model
+  exponent_y_pred <- predict(exponent_classifier, newdata = test_sets[[subject_id]])
+  
+  # Check if predictions were made
+  if (length(exponent_y_pred) == 0) {
+    warning(paste("No predictions made for subject", subject_id, "using Exponent. Skipping."))
+    next
+  }
+  
+  # Store the predictions for Exponent
+  exponent_predictions[[subject_id]] <- exponent_y_pred
+  
+  # Generate and store the confusion matrix for Exponent
+  exponent_cm <- table(test_sets[[subject_id]]$Condition, exponent_y_pred)
+  exponent_confusion_matrices[[subject_id]] <- exponent_cm
+  
+  # Optionally, print the confusion matrix for Exponent
+  print(paste("Confusion Matrix for Exponent - Subject", subject_id))
+  print(exponent_cm)
+}
+
+# Initialize variables to store aggregated true positives and total predictions for Exponent
+total_true_positives_exponent <- 0
+total_predictions_exponent <- 0
+
+# Loop through each confusion matrix for Exponent to aggregate values
+for (subject_id in names(exponent_confusion_matrices)) {
+  cm <- exponent_confusion_matrices[[subject_id]]
+  
+  # Sum the diagonal elements for true positives
+  true_positives_exponent <- sum(diag(cm))
+  total_true_positives_exponent <- total_true_positives_exponent + true_positives_exponent
+  
+  # Sum all elements for total predictions
+  total_exponent <- sum(cm)
+  total_predictions_exponent <- total_predictions_exponent + total_exponent
+}
+
+# Calculate overall accuracy for Exponent
+if (total_predictions_exponent > 0) {
+  overall_accuracy_exponent <- total_true_positives_exponent / total_predictions_exponent
+  print(paste("Overall Accuracy for Exponent:", overall_accuracy_exponent))
+} else {
+  print("No predictions were made using Exponent, so overall accuracy cannot be calculated.")
+}
+
+```
+
+Aperiodic - Offset + Exponent 
+```{r}
+library(e1071)
+
+# Initialize lists to store results for models using both Offset and Exponent
+combined_classifiers <- list()
+combined_predictions <- list()
+combined_confusion_matrices <- list()
+
+# Loop over each subject for combined Offset and Exponent
+for (subject_id in names(training_sets)) {
+  
+  # Ensure the training set is valid
+  if (is.null(training_sets[[subject_id]]) || nrow(training_sets[[subject_id]]) == 0) {
+    warning(paste("Training set for subject", subject_id, "is NULL or empty. Skipping."))
+    next
+  }
+  
+  # Train SVM classifier using both Offset and Exponent as features
+  combined_classifier <- svm(formula = Condition ~ Offset + Exponent, data = training_sets[[subject_id]], type = 'C-classification', kernel = 'radial')
+  
+  # Store the trained model for combined Offset and Exponent
+  combined_classifiers[[subject_id]] <- combined_classifier
+  
+  # Ensure the test set is valid
+  if (is.null(test_sets[[subject_id]]) || nrow(test_sets[[subject_id]]) == 0) {
+    warning(paste("Test set for subject", subject_id, "is NULL or empty. Skipping."))
+    next
+  }
+  
+  # Predict using the combined model
+  combined_y_pred <- predict(combined_classifier, newdata = test_sets[[subject_id]])
+  
+  # Check if predictions were made
+  if (length(combined_y_pred) == 0) {
+    warning(paste("No predictions made for subject", subject_id, "using combined Offset and Exponent. Skipping."))
+    next
+  }
+  
+  # Store the predictions for combined Offset and Exponent
+  combined_predictions[[subject_id]] <- combined_y_pred
+  
+  # Generate and store the confusion matrix for combined Offset and Exponent
+  combined_cm <- table(test_sets[[subject_id]]$Condition, combined_y_pred)
+  combined_confusion_matrices[[subject_id]] <- combined_cm
+  
+  # Optionally, print the confusion matrix for combined Offset and Exponent
+  print(paste("Confusion Matrix for Combined Offset and Exponent - Subject", subject_id))
+  print(combined_cm)
+}
+
+# Initialize variables to store aggregated true positives and total predictions for combined Offset and Exponent
+total_true_positives_combined <- 0
+total_predictions_combined <- 0
+
+# Loop through each confusion matrix for combined Offset and Exponent to aggregate values
+for (subject_id in names(combined_confusion_matrices)) {
+  cm <- combined_confusion_matrices[[subject_id]]
+  
+  # Sum the diagonal elements for true positives
+  true_positives_combined <- sum(diag(cm))
+  total_true_positives_combined <- total_true_positives_combined + true_positives_combined
+  
+  # Sum all elements for total predictions
+  total_combined <- sum(cm)
+  total_predictions_combined <- total_predictions_combined + total_combined
+}
+
+# Calculate overall accuracy for combined Offset and Exponent
+if (total_predictions_combined > 0) {
+  overall_accuracy_combined <- total_true_positives_combined / total_predictions_combined
+  print(paste("Overall Accuracy for Combined Offset and Exponent:", overall_accuracy_combined))
+} else {
+  print("No predictions were made using combined Offset and Exponent, so overall accuracy cannot be calculated.")
+}
+
+```
+
+
+```{r}
+library(ggplot2)
+
+# Function to plot a confusion matrix with proportions, custom labels, and black borders
+plot_conf_matrix <- function(conf_matrix, title) {
+  # Change labels to A, B, C
+  rownames(conf_matrix) <- colnames(conf_matrix) <- c("Low", "Medium", "High")
+  
+  # Calculate proportions based on column sums
+  prop_matrix <- sweep(conf_matrix, 2, colSums(conf_matrix), FUN="/")
+  
+  # Convert the matrix to a dataframe for plotting
+  conf_matrix_df <- as.data.frame(as.table(prop_matrix))
+  names(conf_matrix_df) <- c("Actual", "Predicted", "Proportion")
+  
+  # Plot
+  p <- ggplot(conf_matrix_df, aes(x = Predicted, y = Actual, fill = Proportion)) +
+    geom_tile(color = "black") +  # Black borders around each tile
+    geom_text(aes(label = sprintf("%.2f", Proportion)), vjust = 1, color = "black") +
+    scale_fill_gradient(low = "lightblue", high = "blue", limits = c(0, 1), name = "") +  # Adjusted scale and removed legend label
+    labs(title = title, x = "Predicted Class", y = "Actual Class") +  # Removed fill label
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 0, hjust = 0.5),  # Horizontal x-axis labels
+          axis.title = element_text(size = 12),  # Bold axis titles
+          plot.title = element_text(hjust = 0.5)) +  # Centered plot title
+    coord_fixed(ratio = 1)  # Enforce 1:1 aspect ratio
+  
+  return(p)
+}
+
+# Define confusion matrices
+conf_matrix_offset <- matrix(c(62, 36, 33, 23, 44, 44, 2, 7, 10), nrow = 3, byrow = TRUE)
+conf_matrix_exponent <- matrix(c(36, 23, 25, 35, 44, 46, 16, 20, 16), nrow = 3, byrow = TRUE)
+conf_matrix_offset_exponent <- matrix(c(56, 33, 29, 18, 30, 37, 13, 24, 21), nrow = 3, byrow = TRUE)
+conf_matrix_periodic <- matrix(c(28, 19, 19, 24, 30, 22, 35, 38, 46), nrow = 3, byrow = TRUE)
+conf_matrix_periodic_aperiodic <- matrix(c(49, 26, 15, 16, 22, 23, 22, 39, 49), nrow = 3, byrow = TRUE)
+conf_matrix_periodic_aperiodic_exponent <- matrix(c(30, 29, 28, 15, 34, 38, 18, 28, 41), nrow = 3, byrow = TRUE)
+
+# Plot confusion matrices
+plot_conf_matrix_offset <- plot_conf_matrix(conf_matrix_offset, "Aperiodic Offset")
+plot_conf_matrix_exponent <- plot_conf_matrix(conf_matrix_exponent, "Aperiodic Exponent")
+plot_conf_matrix_offset_exponent <- plot_conf_matrix(conf_matrix_offset_exponent, "Aperiodic Combined")
+plot_conf_matrix_periodic <- plot_conf_matrix(conf_matrix_periodic, "Periodic Component")
+plot_conf_matrix_periodic_aperiodic <- plot_conf_matrix(conf_matrix_periodic_aperiodic, "Periodic and Aperiodic Combined")
+plot_conf_matrix_periodic_aperiodic_exponent <- plot_conf_matrix(conf_matrix_periodic_aperiodic_exponent, "Periodic and Aperiodic Exponent")
+
+# Print plots individually
+print(plot_conf_matrix_offset)
+print(plot_conf_matrix_exponent)
+print(plot_conf_matrix_offset_exponent)
+print(plot_conf_matrix_periodic)
+print(plot_conf_matrix_periodic_aperiodic)
+print(plot_conf_matrix_periodic_aperiodic_exponent)
+
+
+
+```
+
+```{r}
+# Load necessary libraries
+library(ggplot2)
+library(dplyr)
+
+# Updated confusion matrix with your provided values
+conf_matrix <- matrix(c(48, 24, 18, 22, 25, 27, 17, 38, 42), nrow = 3, byrow = TRUE)
+
+# Add row names and column names to match your actual labels
+rownames(conf_matrix) <- colnames(conf_matrix) <- c("1", "2", "3")
+
+# Convert the matrix to a data frame for ggplot2
+conf_matrix_df <- as.data.frame(as.table(conf_matrix))
+
+# Create the confusion matrix plot in blue shades
+conf_matrix_plot <- ggplot(data = conf_matrix_df, aes(x = Var1, y = Var2, fill = Freq)) +
+  geom_tile(color = "white") +  # Use geom_tile for the heatmap squares
+  geom_text(aes(label = sprintf("%d", Freq)), vjust = 1, color = "white") +  # Add white text labels with counts
+  scale_fill_gradient(low = "lightblue", high = "blue") +  # Gradient fill in blue shades
+  labs(x = "Predicted Class", y = "Actual Class", fill = "Count") +
+  theme_minimal() +  # Minimal theme
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),  # Tilt x axis labels for clarity
+        axis.title = element_text(size = 12, face = "bold"),  # Bold axis titles
+        legend.title = element_text(size = 10, face = "bold"),  # Bold legend title
+        plot.title = element_text(hjust = 0.5)) +  # Center plot title
+  ggtitle("Confusion Matrix")  # Add title
+
+# Print the plot
+print(conf_matrix_plot)
+
+# Assuming you have the confusion matrix 'conf_matrix' from earlier
+conf_matrix <- matrix(c(48, 22, 17, 24, 25, 38, 18, 27, 42), nrow = 3, byrow = TRUE)
+
+# Calculate precision, recall, and F1 score for each class
+precision <- diag(conf_matrix) / colSums(conf_matrix)
+recall <- diag(conf_matrix) / rowSums(conf_matrix)
+f1_score <- 2 * (precision * recall) / (precision + recall)
+
+# Create a data frame to store the results
+performance_metrics <- data.frame(
+  Class = c(1, 2, 3),
+  Precision = precision,
+  Recall = recall,
+  F1_Score = f1_score
+)
+
+# Print the results
+print(performance_metrics)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{python, message = FALSE}
+# Define `peak_width_limit` setting
+peak_width = [1, 8]
+
+# Define `max_n_peaks` setting
+n_peaks = 6
+
+# Define `min_peak_height` setting
+peak_height = 0.10
+
+# Define frequency range
+PSD_range = [0, 250]
+```
+
+```{python, message = FALSE}
+# Initialize a model object for spectral parameterization, with some settings
+fm = FOOOF(peak_width_limits = peak_width, max_n_peaks = n_peaks, min_peak_height = peak_height, verbose = False)
+```
+
+```{python, message = FALSE, fig.height = 6, fig.width = 9}
+# Fit individual PSD over 3-40 Hz range
+fm.report(freqs, spectrum, PSD_range)
+plt.show()
+```
+
+```{python, message = FALSE}
+# Save out a copy of the model fit report
+fm.save_report('INDV_demo', file_path = '../Output')
+
+# The following line can also be used to save out the model plot
+#fm.plot(save_fig = True, file_name = 'INDV_demo', file_path = '../Output')
+```
+
+### Access model fit information
+```{python, message = FALSE}
+# Access the model fit parameters from the model object
+print('Aperiodic parameters: \n', fm.aperiodic_params_, '\n')
+print('Peak parameters: \n', fm.peak_params_, '\n')
+print('Goodness of fit:')
+print('Error - ', fm.error_)
+print('R^2   - ', fm.r_squared_, '\n')
+print('Number of fit peaks: \n', fm.n_peaks_)
+```
+
+
+### Extract periodic and aperiodic parameters
+```{python, message = FALSE}
+# Extract aperiodic and periodic parameter information
+aps = fm.get_params('aperiodic_params')
+peaks = fm.get_params('peak_params')
+```
+
+```{python, message = FALSE}
+# Extract goodness of fit information
+err = fm.get_params('error')
+r2s = fm.get_params('r_squared')
+```
+
+```{python, message = FALSE}
+# Extract specific parameters 
+exp = fm.get_params('aperiodic_params', 'exponent')
+cfs = fm.get_params('peak_params', 'CF')
+```
+
+```{python, message = FALSE}
+# Print out a custom parameter report
+template = ("With an error level of {error:1.2f}, specparam fit an exponent of {exponent:1.2f} and peaks of {cfs:s} Hz.")
+print(template.format(error = err, exponent = exp, cfs = ' & '.join(map(str, [round(CF, 2) for CF in cfs]))))
+```
+
+### Plot flattened power spectrum
+It may be useful to plot a flattened power spectrum, with the aperiodic fit removed. 
+```{python, message = FALSE}
+# Set whether to plot in log-log space
+plt_log = False
+```
+
+```{python, message = FALSE}
+# Do an initial aperiodic fit - a robust fit, that excludes outliers
+init_ap_fit = gen_aperiodic(fm.freqs, fm._robust_ap_fit(fm.freqs, fm.power_spectrum))
+
+# Recompute the flattened spectrum using the initial aperiodic fit
+init_flat_spec = fm.power_spectrum - init_ap_fit
+```
+
+```{python, message = FALSE}
+# Plot the flattened the power spectrum
+plot_spectrum(fm.freqs, init_flat_spec, plt_log, label = 'Flattened spectrum', color = 'black')
+plt.show()
+```
+
+## Move to R 
+Transferring specparam model objects into R allows a researcher to work within an environment that they are comfortable navigating, while reducing the number of secondary programs needed to process data. Here, we provide code to call python objects into R using the `py$` command in a R code chunk. We also provide example code to visualize some of the plots included in the specparam module in ggplot, to allow the user additional control over plot dimensions. 
+
+### Calling python objects into R
+```{r}
+# Transfer periodic parameters to R data frame
+per <- as.data.frame(py$peaks) %>% 
+         rename(CF = 1, PW = 2, BW = 3) %>% 
+         mutate(peak_num = row_number()) %>% 
+         group_by(peak_num) %>% 
+         mutate(index = seq_along(CF)) %>%
+         pivot_wider(id_col = index, names_from = peak_num, values_from = c(CF, PW, BW)) %>% 
+         select(index, CF_1, PW_1, BW_1, CF_2, PW_2, BW_2) 
+```
+
+```{r}
+# Transfer aperiodic parameters to R data frame
+aps <- as.data.frame(py$aps) %>% 
+         mutate(var = c("offset","exponent")) %>% 
+         spread(var, `py$aps`) %>% mutate(index = row_number()) %>% 
+         select(index, offset, exponent)
+```
+
+```{r}
+# Transfer group fit information to R data frame
+r2s <- as.data.frame(py$r2s) %>% 
+         rename(r2s = 1) %>% 
+         mutate(index = row_number())
+
+err <- as.data.frame(py$err) %>% 
+         rename(err = 1) %>% 
+         mutate(index = row_number())
+```
+
+```{r}
+# Pull IDs 
+IDs <- read.csv("../Data/indv.csv", header = TRUE) %>% 
+         select(ID) %>% 
+         mutate(index = row_number())  
+
+# Join data frames
+dat <- full_join(IDs, per, by = "index") %>% 
+         full_join(aps, by = "index") %>%
+         full_join(r2s, by = "index") %>% 
+         full_join(err, by = "index") %>% 
+         select(-index) %>% arrange(ID)
+```
+
+### Save fit information
+```{r}
+# Save out data frame as csv file
+write.csv(dat, "../Output/INDV_demo.csv", row.names = FALSE)
+```
+
+### Frequency-by-frequency error
+It can be useful to plot frequency-by-frequency error of the model fit, to identify where in frequency space the spectrum is (or is not) being fit well. When fitting individual spectrum, this can be accomplished using the `compute_pointwise_error_fm` function.
+
+In this case, we can see that error fluctuates around 0.06, which is the mean absolute error for the model (MAE). There are points in the spectrum where the model fit is somewhat poor, particularly < 4 Hz, ~6-9 Hz, and ~14 Hz. Further considerations may be necessary for this model fit.
+```{python, message = FALSE, fig.height = 6, fig.width = 9}
+# Plot frequency-by-frequency error 
+compute_pointwise_error_fm(fm, plot_errors = True)
+plt.show()
+```
+
+```{python, message = FALSE}
+# Return the frequency-by-frequency errors
+errs_fm = compute_pointwise_error_fm(fm, plot_errors = False, return_errors = True)
+errs_fm
+```
+
+```{python, message = FALSE}
+# Note that the average of this error is the same as the global error stored
+print('Average freq-by-freq error:\t {:1.3f}'.format(np.mean(errs_fm)))
+print('specparam model fit error: \t\t {:1.3f}'.format(fm.error_))
+```
+
